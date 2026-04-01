@@ -10,6 +10,7 @@ Use this file as the fastest command chooser for weak models. Prefer the left-to
 | List closed or merged MRs | `<gmr-command> mr list --repo <repo> --hostname <host> --state closed|merged|all` | Prefer `--state` over raw `glab` flags. |
 | List my MRs | `<gmr-command> mr list --repo <repo> --hostname <host> --mine` | Default `--mine` role is `author`. |
 | List MRs assigned to me | `<gmr-command> mr list --repo <repo> --hostname <host> --mine --mine-role assignee` | Uses current developer resolution. |
+| List MRs waiting for my review | `<gmr-command> mr list --repo <repo> --hostname <host> --mine --mine-role reviewer` | Use for prompts like "my review queue". |
 | List MRs by explicit user | `<gmr-command> mr list --repo <repo> --hostname <host> --author <user>` | Also supports `mine`, `me`, `@me`. |
 | Check MR status | `<gmr-command> mr status <mr-target>` | Default read path for MR-bound pipeline status. |
 | List manual jobs on MR pipeline | `<gmr-command> mr manual-jobs <mr-target>` | Returns only `manual` jobs from head pipeline. |
@@ -36,3 +37,4 @@ Use this file as the fastest command chooser for weak models. Prefer the left-to
 - Prefer non-interactive commands.
 - Prefer resolved context over re-detecting context.
 - `--mine` resolves the current developer from git email plus authenticated GitLab username.
+- For prompts like "мои открытые MR" or "my open merge requests", prefer `mr list --mine`.

@@ -73,6 +73,32 @@ def shorten(text: str, limit: int) -> str:
     return compact[: limit - 1].rstrip() + "…"
 
 
+def unique_strings(values: list[str | None]) -> list[str]:
+    seen: set[str] = set()
+    results: list[str] = []
+    for value in values:
+        if not value:
+            continue
+        cleaned = value.strip()
+        if not cleaned:
+            continue
+        key = cleaned.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        results.append(cleaned)
+    return results
+
+
+def email_localparts(emails: list[str | None]) -> list[str]:
+    localparts: list[str | None] = []
+    for email in emails:
+        if not email or "@" not in email:
+            continue
+        localparts.append(email.split("@", 1)[0].strip())
+    return unique_strings(localparts)
+
+
 def clean_trace_lines(text: str) -> list[str]:
     lines: list[str] = []
     for raw_line in strip_ansi(text).splitlines():
@@ -178,7 +204,12 @@ def infer_current_branch() -> str | None:
 
 def get_git_email_candidates() -> list[str]:
     candidates: list[str] = []
-    for command in (["git", "config", "user.email"], ["git", "config", "--global", "user.email"]):
+    for command in (
+        ["git", "config", "--get", "--local", "user.email"],
+        ["git", "config", "--get", "--worktree", "user.email"],
+        ["git", "config", "--get", "user.email"],
+        ["git", "config", "--get", "--global", "user.email"],
+    ):
         try:
             email = run_command(command).strip()
         except CommandError:
@@ -188,42 +219,77 @@ def get_git_email_candidates() -> list[str]:
     return candidates
 
 
-def get_authenticated_username(hostname: str) -> str | None:
+def get_authenticated_user(hostname: str) -> dict[str, Any]:
     try:
         user = glab_json(hostname, "user")
     except CommandError:
-        return None
-    username = (user or {}).get("username")
+        return {}
+    return user if isinstance(user, dict) else {}
+
+
+def get_authenticated_username(hostname: str) -> str | None:
+    username = get_authenticated_user(hostname).get("username")
     return username.strip() if isinstance(username, str) and username.strip() else None
 
 
-def resolve_current_username(hostname: str) -> str:
+def resolve_current_user(hostname: str) -> dict[str, Any]:
     email_candidates = get_git_email_candidates()
-    localparts = [email.split("@", 1)[0] for email in email_candidates if "@" in email]
-    auth_username = get_authenticated_username(hostname)
-
-    if auth_username:
-        if auth_username in localparts:
-            return auth_username
-        if any(localpart and auth_username.startswith(localpart) for localpart in localparts):
-            return auth_username
-
-    if localparts:
-        return localparts[0]
-    if auth_username:
-        return auth_username
-
-    raise CommandError(
-        "Could not resolve the current username from git config or the authenticated GitLab account."
+    localparts = email_localparts(email_candidates)
+    authenticated_user = get_authenticated_user(hostname)
+    auth_username = (authenticated_user.get("username") or "").strip()
+    auth_localparts = email_localparts(
+        [
+            authenticated_user.get("email"),
+            authenticated_user.get("public_email"),
+            authenticated_user.get("commit_email"),
+        ]
     )
 
+    current_user: str | None = None
+    if auth_username:
+        auth_username_key = auth_username.lower()
+        localpart_keys = [localpart.lower() for localpart in localparts]
+        if auth_username_key in localpart_keys or any(
+            localpart and auth_username_key.startswith(localpart) for localpart in localpart_keys
+        ):
+            current_user = auth_username
 
-def normalize_user_filter(value: str | None, hostname: str) -> str | None:
+    if not current_user and localparts:
+        current_user = localparts[0]
+    if not current_user and auth_username:
+        current_user = auth_username
+    if not current_user and auth_localparts:
+        current_user = auth_localparts[0]
+
+    if not current_user:
+        raise CommandError(
+            "Could not resolve the current username from git config or the authenticated GitLab account."
+        )
+
+    return {
+        "username": current_user,
+        "candidates": unique_strings([current_user, *localparts, *auth_localparts, auth_username]),
+        "git_emails": email_candidates,
+        "git_localparts": localparts,
+        "authenticated_username": auth_username or None,
+    }
+
+
+def resolve_current_username(hostname: str) -> str:
+    return resolve_current_user(hostname)["username"]
+
+
+def resolve_user_filter(
+    value: str | None,
+    hostname: str,
+    current_user: dict[str, Any] | None,
+) -> tuple[str | None, list[str], dict[str, Any] | None]:
     if not value:
-        return value
+        return None, [], current_user
     if value.lower() in MINE_ALIASES:
-        return resolve_current_username(hostname)
-    return value
+        current_user = current_user or resolve_current_user(hostname)
+        return current_user["username"], current_user["candidates"], current_user
+    return value, [value], current_user
 
 
 def resolve_repo_target(repo: str | None, hostname: str | None) -> dict[str, str]:
@@ -331,6 +397,69 @@ def summarize_users(users: list[dict[str, Any]] | None) -> list[str]:
         for user in (users or [])
         if (user.get("username") or user.get("name"))
     ]
+
+
+def matches_any_user(username: str | None, candidates: list[str]) -> bool:
+    if not username:
+        return False
+    username_key = username.strip().lower()
+    if not username_key:
+        return False
+    return any(candidate and username_key == candidate.lower() for candidate in candidates)
+
+
+def merge_request_matches_user_filter(mr: dict[str, Any], field: str, candidates: list[str]) -> bool:
+    if not candidates:
+        return True
+
+    if field == "author":
+        author = mr.get("author") or {}
+        return matches_any_user(author.get("username") or author.get("name"), candidates)
+
+    if field == "assignee":
+        assignee = mr.get("assignee") or {}
+        assignees = unique_strings(
+            [
+                assignee.get("username"),
+                assignee.get("name"),
+                *summarize_users(mr.get("assignees")),
+            ]
+        )
+        return any(matches_any_user(username, candidates) for username in assignees)
+
+    if field == "reviewer":
+        reviewers = summarize_users(mr.get("reviewers"))
+        return any(matches_any_user(username, candidates) for username in reviewers)
+
+    raise ValueError(f"Unsupported user filter field: {field}")
+
+
+def post_filter_merge_requests(
+    merge_requests: list[dict[str, Any]],
+    *,
+    author_candidates: list[str],
+    assignee_candidates: list[str],
+    reviewer_candidates: list[str],
+    draft: bool,
+    not_draft: bool,
+) -> list[dict[str, Any]]:
+    filtered: list[dict[str, Any]] = []
+    for mr in merge_requests:
+        if not merge_request_matches_user_filter(mr, "author", author_candidates):
+            continue
+        if not merge_request_matches_user_filter(mr, "assignee", assignee_candidates):
+            continue
+        if not merge_request_matches_user_filter(mr, "reviewer", reviewer_candidates):
+            continue
+
+        is_draft = bool(mr.get("draft"))
+        if draft and not is_draft:
+            continue
+        if not_draft and is_draft:
+            continue
+
+        filtered.append(mr)
+    return filtered
 
 
 def select_mr_list_fields(mr: dict[str, Any]) -> dict[str, Any]:
@@ -613,29 +742,46 @@ def command_mr_create(args: argparse.Namespace) -> None:
 
 def command_mr_list(args: argparse.Namespace) -> None:
     ctx = resolve_repo_target(args.repo, args.hostname)
-    current_user: str | None = None
+    current_user_info: dict[str, Any] | None = None
 
     if args.draft and args.not_draft:
         raise CommandError("Cannot combine --draft and --not-draft.")
 
-    author = normalize_user_filter(args.author, ctx["hostname"])
-    assignee = normalize_user_filter(args.assignee, ctx["hostname"])
-    reviewer = normalize_user_filter(args.reviewer, ctx["hostname"])
+    author, author_candidates, current_user_info = resolve_user_filter(
+        args.author,
+        ctx["hostname"],
+        current_user_info,
+    )
+    assignee, assignee_candidates, current_user_info = resolve_user_filter(
+        args.assignee,
+        ctx["hostname"],
+        current_user_info,
+    )
+    reviewer, reviewer_candidates, current_user_info = resolve_user_filter(
+        args.reviewer,
+        ctx["hostname"],
+        current_user_info,
+    )
 
     if args.mine:
-        current_user = resolve_current_username(ctx["hostname"])
+        current_user_info = current_user_info or resolve_current_user(ctx["hostname"])
+        current_user = current_user_info["username"]
+        current_user_candidates = current_user_info["candidates"]
         if args.mine_role == "author":
             if author:
                 raise CommandError("Cannot combine --mine with --author.")
             author = current_user
+            author_candidates = current_user_candidates
         elif args.mine_role == "assignee":
             if assignee:
                 raise CommandError("Cannot combine --mine with --assignee.")
             assignee = current_user
+            assignee_candidates = current_user_candidates
         elif args.mine_role == "reviewer":
             if reviewer:
                 raise CommandError("Cannot combine --mine with --reviewer.")
             reviewer = current_user
+            reviewer_candidates = current_user_candidates
 
     command = [
         "glab",
@@ -679,7 +825,14 @@ def command_mr_list(args: argparse.Namespace) -> None:
         command.append("--not-draft")
 
     output = run_command(command, env=glab_cli_env(ctx["hostname"]))
-    merge_requests = json.loads(output)
+    merge_requests = post_filter_merge_requests(
+        json.loads(output),
+        author_candidates=author_candidates,
+        assignee_candidates=assignee_candidates,
+        reviewer_candidates=reviewer_candidates,
+        draft=args.draft,
+        not_draft=args.not_draft,
+    )
 
     print_json(
         {
@@ -691,7 +844,8 @@ def command_mr_list(args: argparse.Namespace) -> None:
                 "reviewer": reviewer,
                 "mine": args.mine,
                 "mine_role": args.mine_role if args.mine else None,
-                "current_user": current_user,
+                "current_user": current_user_info["username"] if current_user_info else None,
+                "current_user_candidates": current_user_info["candidates"] if current_user_info else [],
                 "draft": args.draft,
                 "not_draft": args.not_draft,
                 "source_branch": args.source_branch,

@@ -167,12 +167,55 @@ class CurrentUserResolutionTests(unittest.TestCase):
             return_value=["oparin@me.com"],
         ), mock.patch.object(
             gmr_main,
-            "get_authenticated_username",
-            return_value="oparin.ivan3",
+            "get_authenticated_user",
+            return_value={
+                "username": "oparin.ivan3",
+                "email": "oparin.ivan3@wb.ru",
+                "public_email": "oparin.ivan3@wb.ru",
+                "commit_email": "oparin.ivan3@wb.ru",
+            },
         ):
             username = gmr_main.resolve_current_username("gitlab.example.com")
 
         self.assertEqual(username, "oparin.ivan3")
+
+    def test_resolve_current_user_keeps_repo_local_email_ahead_of_global(self) -> None:
+        with mock.patch.object(
+            gmr_main,
+            "run_command",
+            side_effect=[
+                "oparin.ivan3@wb.ru\n",
+                gmr_main.CommandError("no worktree config"),
+                "oparin.ivan3@wb.ru\n",
+                "oparin@me.com\n",
+            ],
+        ):
+            emails = gmr_main.get_git_email_candidates()
+
+        self.assertEqual(emails, ["oparin.ivan3@wb.ru", "oparin@me.com"])
+
+    def test_resolve_current_user_returns_alias_candidates(self) -> None:
+        with mock.patch.object(
+            gmr_main,
+            "get_git_email_candidates",
+            return_value=["oparin@me.com"],
+        ), mock.patch.object(
+            gmr_main,
+            "get_authenticated_user",
+            return_value={
+                "username": "oparin.ivan3",
+                "email": "oparin.ivan3@wb.ru",
+                "public_email": "oparin.ivan3@wb.ru",
+                "commit_email": "oparin.ivan3@wb.ru",
+            },
+        ):
+            current_user = gmr_main.resolve_current_user("gitlab.example.com")
+
+        self.assertEqual(current_user["username"], "oparin.ivan3")
+        self.assertEqual(
+            current_user["candidates"],
+            ["oparin.ivan3", "oparin"],
+        )
 
 
 class WriteWrapperTests(unittest.TestCase):
@@ -299,7 +342,15 @@ class WriteWrapperTests(unittest.TestCase):
             "resolve_repo_target",
             return_value={"hostname": "gitlab.example.com", "repo": "group/project", "repo_encoded": "group%2Fproject"},
         ), mock.patch.object(
-            gmr_main, "resolve_current_username", return_value="oparin.ivan3"
+            gmr_main,
+            "resolve_current_user",
+            return_value={
+                "username": "oparin.ivan3",
+                "candidates": ["oparin.ivan3", "oparin"],
+                "git_emails": ["oparin.ivan3@wb.ru"],
+                "git_localparts": ["oparin.ivan3"],
+                "authenticated_username": "oparin.ivan3",
+            },
         ), mock.patch.object(
             gmr_main, "run_command", return_value=gmr_main.json.dumps(mr_list)
         ) as run_mock, mock.patch.object(gmr_main, "print_json") as print_mock:
@@ -311,7 +362,87 @@ class WriteWrapperTests(unittest.TestCase):
         self.assertIn("oparin.ivan3", command)
         self.assertEqual(env["GITLAB_HOST"], "gitlab.example.com")
         self.assertEqual(print_mock.call_args.args[0]["filters"]["current_user"], "oparin.ivan3")
+        self.assertEqual(
+            print_mock.call_args.args[0]["filters"]["current_user_candidates"],
+            ["oparin.ivan3", "oparin"],
+        )
         self.assertEqual(print_mock.call_args.args[0]["count"], 1)
+
+    def test_command_mr_list_post_filters_mine_results_by_alias_candidates(self) -> None:
+        args = SimpleNamespace(
+            repo="group/project",
+            hostname="gitlab.example.com",
+            state="opened",
+            author=None,
+            assignee=None,
+            reviewer=None,
+            mine=True,
+            mine_role="author",
+            draft=False,
+            not_draft=False,
+            source_branch=None,
+            target_branch=None,
+            search=None,
+            label=None,
+            page=1,
+            per_page=30,
+        )
+        mr_list = [
+            {
+                "iid": 42,
+                "title": "Mine via git localpart",
+                "state": "opened",
+                "draft": False,
+                "detailed_merge_status": "mergeable",
+                "author": {"username": "oparin"},
+                "assignee": {"username": "oparin"},
+                "assignees": [{"username": "oparin"}],
+                "reviewers": [],
+                "source_branch": "feature/mine",
+                "target_branch": "develop",
+                "labels": [],
+                "updated_at": "2026-04-01T00:00:00Z",
+                "web_url": "https://gitlab.example.com/group/project/-/merge_requests/42",
+            },
+            {
+                "iid": 43,
+                "title": "Someone else's MR",
+                "state": "opened",
+                "draft": False,
+                "detailed_merge_status": "mergeable",
+                "author": {"username": "alice"},
+                "assignee": {"username": "alice"},
+                "assignees": [{"username": "alice"}],
+                "reviewers": [],
+                "source_branch": "feature/other",
+                "target_branch": "develop",
+                "labels": [],
+                "updated_at": "2026-04-01T00:00:00Z",
+                "web_url": "https://gitlab.example.com/group/project/-/merge_requests/43",
+            },
+        ]
+        with mock.patch.object(
+            gmr_main,
+            "resolve_repo_target",
+            return_value={"hostname": "gitlab.example.com", "repo": "group/project", "repo_encoded": "group%2Fproject"},
+        ), mock.patch.object(
+            gmr_main,
+            "resolve_current_user",
+            return_value={
+                "username": "oparin.ivan3",
+                "candidates": ["oparin.ivan3", "oparin"],
+                "git_emails": ["oparin@me.com"],
+                "git_localparts": ["oparin"],
+                "authenticated_username": "oparin.ivan3",
+            },
+        ), mock.patch.object(
+            gmr_main, "run_command", return_value=gmr_main.json.dumps(mr_list)
+        ), mock.patch.object(gmr_main, "print_json") as print_mock:
+            gmr_main.command_mr_list(args)
+
+        payload = print_mock.call_args.args[0]
+        self.assertEqual(payload["count"], 1)
+        self.assertEqual([item["iid"] for item in payload["items"]], [42])
 
     def test_command_mr_list_rejects_draft_flag_conflict(self) -> None:
         args = SimpleNamespace(

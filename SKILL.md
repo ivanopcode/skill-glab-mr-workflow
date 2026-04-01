@@ -1,6 +1,6 @@
 ---
 name: skill-glab-mr-workflow
-description: Use when Codex needs to work with one or more self-hosted or cloud GitLab instances through local glab commands instead of MCP, including macOS Keychain auth, merge request URLs or repo/iid targets, MR creation, review reads, approvals, merges, pipeline status checks, failed job trace summaries, and manual CI job execution through the bundled gmr wrapper.
+description: Use when Codex needs to work with one or more self-hosted or cloud GitLab instances through local glab commands instead of MCP, including listing my open merge requests, assigned or review-queue merge requests, macOS Keychain auth, merge request URLs or repo/iid targets, MR creation, review reads, approvals, merges, pipeline status checks, failed job trace summaries, and manual CI job execution through the bundled gmr wrapper.
 ---
 
 # skill-glab-mr-workflow
@@ -25,6 +25,7 @@ description: Use when Codex needs to work with one or more self-hosted or cloud 
 - Prefer `<gmr-command>` for agent-facing MR lists, MR status, pipeline diagnostics, failed-job root cause extraction, and manual-job operations.
 - Prefer `<gmr-command>` for weak-model-safe create, approve, and merge actions.
 - Prefer direct `glab` commands for rebase and note.
+- For prompts like "покажи мои открытые MR", "какие у меня открытые merge requests", "show my open merge requests", "what MRs are assigned to me", or "my review queue", stay in this skill and use `<gmr-command> mr list` with `--mine` or `--mine-role` instead of a project-wide unfiltered list.
 - See [`references/cli-surface.md`](references/cli-surface.md) for the one-screen command map.
 
 ## Resolve Context First
@@ -118,6 +119,40 @@ Return the actual status and root cause. Do not stop at "pipeline failed" when t
 
 ## Project MR Lists
 
+For prompts like:
+
+- "покажи мои открытые MR"
+- "какие у меня открытые merge requests"
+- "show my open merge requests"
+
+use:
+
+```bash
+<gmr-command> mr list --repo <repo> --hostname <host> --mine
+```
+
+For prompts like:
+
+- "что назначено мне"
+- "which MRs are assigned to me"
+
+use:
+
+```bash
+<gmr-command> mr list --repo <repo> --hostname <host> --mine --mine-role assignee
+```
+
+For prompts like:
+
+- "что у меня на ревью"
+- "my review queue"
+
+use:
+
+```bash
+<gmr-command> mr list --repo <repo> --hostname <host> --mine --mine-role reviewer
+```
+
 Use `<gmr-command>` for project-level merge request lists:
 
 ```bash
@@ -139,7 +174,9 @@ Rules:
 - `--mine` defaults to author filtering.
 - `--mine-role assignee` and `--mine-role reviewer` switch the target field.
 - Current developer resolution for `--mine`:
-  - first read `git config user.email`
+  - first read repo-local `git config --local user.email`
+  - then read `git config --worktree user.email` when available
+  - then read effective `git config user.email`
   - then fall back to `git config --global user.email`
   - take the localpart before `@`
   - if the authenticated GitLab username matches or starts with that localpart, prefer the authenticated username

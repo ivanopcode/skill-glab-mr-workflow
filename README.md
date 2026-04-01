@@ -1,6 +1,6 @@
 # skill-glab-mr-workflow
 
-GitLab merge request workflow skill for Codex and Claude Code, built around local `glab` commands and the bundled `gmr` wrapper.
+GitLab merge request workflow skill for Codex and Claude Code, built around local `glab` commands and the bundled `gmr` wrapper. It covers both MR status/review work and natural requests like "show my open merge requests" or "what is assigned to me".
 
 ## What It Covers
 
@@ -37,6 +37,7 @@ scripts/bootstrap-glab-keychain.sh https://gitlab.example.com/
 scripts/gmr mr status https://gitlab.example.com/group/project/-/merge_requests/123
 scripts/gmr mr review-context https://gitlab.example.com/group/project/-/merge_requests/123
 scripts/gmr mr list --repo group/project --hostname gitlab.example.com --mine
+scripts/gmr mr list --repo group/project --hostname gitlab.example.com --mine --mine-role assignee
 scripts/gmr mr create --fill
 scripts/gmr mr approve https://gitlab.example.com/group/project/-/merge_requests/123
 scripts/gmr mr merge https://gitlab.example.com/group/project/-/merge_requests/123
