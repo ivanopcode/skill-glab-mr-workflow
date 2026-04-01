@@ -1,6 +1,16 @@
 ---
 name: skill-glab-mr-workflow
 description: Use when Codex needs to work with one or more self-hosted or cloud GitLab instances through local glab commands instead of MCP, including listing my open merge requests, assigned or review-queue merge requests, macOS Keychain auth, merge request URLs or repo/iid targets, MR creation, review reads, approvals, merges, pipeline status checks, failed job trace summaries, and manual CI job execution through the bundled gmr wrapper.
+triggers:
+  - "glab mr"
+  - "gitlab merge request"
+  - "gitlab mr status"
+  - "my open merge requests"
+  - "show my open merge requests"
+  - "merge requests assigned to me"
+  - "my review queue"
+  - "pipeline failed in mr"
+  - "manual jobs on mr"
 ---
 
 # skill-glab-mr-workflow
@@ -304,6 +314,12 @@ Ask the user only when one of these is true:
 Otherwise, run the commands and return the result.
 
 ## Output Contract
+
+When answering a project MR list query:
+
+- include every matching MR iid, title, state, draft flag, source branch, target branch, and updated_at when the payload provides it
+- include `total`/`count` from the tool payload when available
+- include the full raw MR URL for every listed MR when the tool payload provides it
 
 When answering an MR status query:
 
