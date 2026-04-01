@@ -1,0 +1,4 @@
+interface:
+  display_name: "glab MR Workflow"
+  short_description: "glab MR workflows, CI status, reviews"
+  default_prompt: "Use $glab-mr-workflow to work with GitLab merge requests through Keychain-backed glab commands for MR status, pipeline failures, manual jobs, reviews, approvals, and merges."
