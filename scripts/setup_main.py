@@ -31,7 +31,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     local_parser = subparsers.add_parser(
         "local",
-        help="Copy the skill into <repo>/.skills/<skill-name> and link project-local agent dirs to that copy",
+        help="Copy the skill into <repo>/.agents/skills/<skill-name> and link <repo>/.claude/skills to that copy",
     )
     local_parser.add_argument("repo_path", help="Path to the git repository root or any path inside that repository")
     local_parser.add_argument("--locale", help=locale_help)
@@ -48,7 +48,8 @@ def print_result(result: InstallResult) -> None:
     else:
         print(f"  Project copy: {result.runtime_dir}")
     print(f"  Claude skill link: {result.claude_link}")
-    print(f"  Codex skill link: {result.codex_link}")
+    if result.codex_link:
+        print(f"  Codex skill link: {result.codex_link}")
 
 
 def main(argv: list[str] | None = None) -> None:

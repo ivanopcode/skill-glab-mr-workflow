@@ -73,7 +73,7 @@ class InstallResult:
     runtime_dir: Path
     install_root: Path
     claude_link: Path
-    codex_link: Path
+    codex_link: Optional[Path]
     locale_mode: str
 
 
@@ -387,20 +387,19 @@ def write_install_manifest(
     skill_name: str,
     install_mode: str,
     locale_mode: str,
-    source_dir: Path,
-    runtime_dir: Path,
+    source_dir: Optional[Path],
 ) -> None:
     selection = parse_locale_mode(locale_mode)
     payload = {
-        "schema_version": 1,
+        "schema_version": 2,
         "skill_name": skill_name,
         "install_mode": install_mode,
         "locale_mode": selection.mode,
         "primary_locale": selection.primary_locale,
         "secondary_locale": selection.secondary_locale,
-        "source_dir": str(source_dir),
-        "runtime_dir": str(runtime_dir),
     }
+    if source_dir is not None:
+        payload["source_dir"] = str(source_dir)
     install_manifest_path(skill_dir).write_text(
         json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
@@ -658,9 +657,9 @@ def perform_install(
         if repo_root is None:
             raise SetupError("Local install requires a repository path.")
         install_root = resolve_repo_root(repo_root)
-        runtime_dir = install_root / ".skills" / skill_name
-        claude_link_value = f"../../.skills/{skill_name}"
-        codex_link_value = f"../../.skills/{skill_name}"
+        runtime_dir = install_root / ".agents" / "skills" / skill_name
+        claude_link_value = f"../../.agents/skills/{skill_name}"
+        codex_link_value = None
     else:
         raise SetupError(f"Unsupported install mode: {install_mode}")
 
@@ -673,21 +672,19 @@ def perform_install(
         skill_name=skill_name,
         install_mode=install_mode,
         locale_mode=locale_mode,
-        source_dir=source_dir,
-        runtime_dir=runtime_dir,
+        source_dir=source_dir if install_mode == "global" else None,
     )
     bootstrap_runner(runtime_dir)
 
     claude_link = install_root / ".claude" / "skills" / skill_name
-    codex_link = install_root / ".codex" / "skills" / skill_name
     ensure_skill_link(claude_link_value, claude_link)
-    ensure_skill_link(codex_link_value, codex_link)
+    codex_link: Optional[Path] = None
+    if codex_link_value is not None:
+        codex_link = install_root / ".codex" / "skills" / skill_name
+        ensure_skill_link(codex_link_value, codex_link)
     if install_mode == "global":
         metadata = build_localized_metadata(runtime_dir, locale_mode, install_mode)
         register_global_skill_triggers(skill_name, metadata["triggers"])
-    if install_mode == "local":
-        ensure_local_testing_module(install_root)
-        ensure_local_agents_entrypoint(install_root)
 
     return InstallResult(
         skill_name=skill_name,

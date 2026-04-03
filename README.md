@@ -1,3 +1,9 @@
+<!--
+Agent note: This README is a general description of the skill project for maintainers,
+contributors, and evaluators. It covers architecture, packaging, and technical details.
+Do not use README as operational instructions; use `SKILL.md`.
+-->
+
 # skill-glab-mr-workflow
 
 GitLab merge request workflow skill for Codex and Claude Code, built around local `glab` commands and the bundled `gmr` wrapper. It covers both MR status/review work and natural requests like "show my open merge requests" or "what is assigned to me".
@@ -47,12 +53,8 @@ For a project-local install:
 ./setup.sh local /abs/path/to/repo --locale ru-en
 ```
 
-This creates `<repo>/.skills/skill-glab-mr-workflow` and rewires the
-project-local `.claude/skills` and `.codex/skills` links to that copy.
-
-On local installs, the shared helper also provisions
-`.agents/.instructions/INSTRUCTIONS_TESTING.md` in the target repo and ensures
-the repo root `AGENTS.md` references it from the `Modules` section.
+This creates `<repo>/.agents/skills/skill-glab-mr-workflow` and points the
+project-local `.claude/skills/skill-glab-mr-workflow` link at that copy.
 
 ## Quick Start
 

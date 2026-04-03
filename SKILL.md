@@ -1,6 +1,6 @@
 ---
 name: skill-glab-mr-workflow
-description: Use when Codex needs to work with one or more self-hosted or cloud GitLab instances through local glab commands instead of MCP, including listing my open merge requests, assigned or review-queue merge requests, macOS Keychain auth, merge request URLs or repo/iid targets, MR creation, review reads, approvals, merges, pipeline status checks, failed job trace summaries, and manual CI job execution through the bundled gmr wrapper.
+description: Use when Codex needs to work with one or more self-hosted or cloud GitLab instances through the bundled GitLab workflow wrappers, including listing my open merge requests, assigned or review-queue merge requests, macOS Keychain auth, merge request URLs or repo/iid targets, MR creation, review reads, approvals, merges, pipeline status checks, failed job trace summaries, and manual CI job execution through the bundled gmr wrapper.
 triggers:
   - "glab mr"
   - "gitlab merge request"
@@ -35,6 +35,7 @@ triggers:
 - Prefer `<gmr-command>` for agent-facing MR lists, MR status, pipeline diagnostics, failed-job root cause extraction, and manual-job operations.
 - Prefer `<gmr-command>` for weak-model-safe create, approve, and merge actions.
 - Prefer direct `glab` commands for rebase and note.
+- When the project `AGENTS.md` defines a default GitLab host for this repository, prefer explicit commands with that host and do not enumerate other hosts first.
 - For prompts like "покажи мои открытые MR", "какие у меня открытые merge requests", "show my open merge requests", "what MRs are assigned to me", or "my review queue", stay in this skill and use `<gmr-command> mr list` with `--mine` or `--mine-role` instead of a project-wide unfiltered list.
 - See [`references/cli-surface.md`](references/cli-surface.md) for the one-screen command map.
 
@@ -83,6 +84,20 @@ If several hosts are configured and the user did not specify one, inspect them w
 ```bash
 glab auth status --all
 ```
+
+For repo-scoped GitLab workflows, choose the target host in this order:
+
+1. Explicit MR URL or explicit hostname from the user.
+2. Default GitLab host defined in the project `AGENTS.md`.
+3. Host inferred from the current repository context when it is unambiguous.
+4. `glab auth status --all` only as fallback discovery.
+5. Ask the user only if several configured hosts look equally relevant or no relevant host exists.
+
+Rules:
+
+- When the project `AGENTS.md` defines a default GitLab host, pass it explicitly to `<gmr-command>` or raw `glab`.
+- Do not rely on whichever host `glab` currently prefers when a repo-default host exists.
+- For repo prompts like "my open merge requests" or "my review queue", prefer the repo-default host before generic host enumeration.
 
 ## Fast Path: MR Status
 

@@ -228,16 +228,14 @@ class SetupSupportTest(unittest.TestCase):
 
         self.assertEqual(
             first_result.runtime_dir.resolve(),
-            (repo_root / ".skills" / "skill-glab-mr-workflow").resolve(),
+            (repo_root / ".agents" / "skills" / "skill-glab-mr-workflow").resolve(),
         )
         self.assertEqual(
             os.readlink(repo_root / ".claude" / "skills" / "skill-glab-mr-workflow"),
-            "../../.skills/skill-glab-mr-workflow",
+            "../../.agents/skills/skill-glab-mr-workflow",
         )
-        self.assertEqual(
-            os.readlink(repo_root / ".codex" / "skills" / "skill-glab-mr-workflow"),
-            "../../.skills/skill-glab-mr-workflow",
-        )
+        self.assertFalse((repo_root / ".codex" / "skills" / "skill-glab-mr-workflow").exists())
+        self.assertIsNone(first_result.codex_link)
         self.assertIn("project-fixed", str(exc.exception))
         rendered_skill = (first_result.runtime_dir / "SKILL.md").read_text(encoding="utf-8")
         rendered_yaml = (first_result.runtime_dir / "agents" / "openai.yaml").read_text(encoding="utf-8")
@@ -245,8 +243,12 @@ class SetupSupportTest(unittest.TestCase):
         self.assertIn('display_name: "[локально] GitLab MR Workflow"', rendered_yaml)
         self.assertIn('short_description: "[локально] Русский Short"', rendered_yaml)
         self.assertIn('default_prompt: "Используй $skill-glab-mr-workflow по-русски."', rendered_yaml)
+        manifest = json.loads((first_result.runtime_dir / ss.MANIFEST_FILENAME).read_text(encoding="utf-8"))
+        self.assertEqual(manifest["schema_version"], 2)
+        self.assertNotIn("source_dir", manifest)
+        self.assertNotIn("runtime_dir", manifest)
 
-    def test_perform_local_install_creates_root_agents_and_testing_module(self) -> None:
+    def test_perform_local_install_does_not_mutate_agents_or_testing_modules(self) -> None:
         source_dir = self.make_source_skill_dir()
         repo_root = self.root / "repo"
         repo_root.mkdir(parents=True, exist_ok=True)
@@ -260,15 +262,10 @@ class SetupSupportTest(unittest.TestCase):
                 bootstrap_runner=lambda _: None,
             )
 
-        agents_text = (repo_root / "AGENTS.md").read_text(encoding="utf-8")
-        testing_text = (repo_root / ".agents" / ".instructions" / "INSTRUCTIONS_TESTING.md").read_text(
-            encoding="utf-8"
-        )
-        self.assertIn("## Modules", agents_text)
-        self.assertIn("@.agents/.instructions/INSTRUCTIONS_TESTING.md", agents_text)
-        self.assertIn("# Testing & Refactoring", testing_text)
+        self.assertFalse((repo_root / "AGENTS.md").exists())
+        self.assertFalse((repo_root / ".agents" / ".instructions" / "INSTRUCTIONS_TESTING.md").exists())
 
-    def test_perform_local_install_adds_modules_section_when_missing(self) -> None:
+    def test_perform_local_install_preserves_existing_agents_file(self) -> None:
         source_dir = self.make_source_skill_dir()
         repo_root = self.root / "repo"
         repo_root.mkdir(parents=True, exist_ok=True)
@@ -289,38 +286,7 @@ class SetupSupportTest(unittest.TestCase):
         agents_text = (repo_root / "AGENTS.md").read_text(encoding="utf-8")
         self.assertIn("## Notes", agents_text)
         self.assertIn("Keep this content.", agents_text)
-        self.assertIn("\n## Modules\n\n@.agents/.instructions/INSTRUCTIONS_TESTING.md\n", agents_text)
-
-    def test_perform_local_install_appends_testing_ref_to_existing_modules(self) -> None:
-        source_dir = self.make_source_skill_dir()
-        repo_root = self.root / "repo"
-        repo_root.mkdir(parents=True, exist_ok=True)
-        (repo_root / "AGENTS.md").write_text(
-            "# Repo Guide\n\n## Modules\n\n@foo/bar.md\n\n## Notes\n\nKeep this content.\n",
-            encoding="utf-8",
-        )
-
-        with mock.patch.object(ss, "resolve_repo_root", return_value=repo_root.resolve()):
-            ss.perform_install(
-                source_dir=source_dir,
-                install_mode="local",
-                requested_locale="ru",
-                repo_root=repo_root,
-                bootstrap_runner=lambda _: None,
-            )
-            ss.perform_install(
-                source_dir=source_dir,
-                install_mode="local",
-                requested_locale="ru",
-                repo_root=repo_root,
-                bootstrap_runner=lambda _: None,
-            )
-
-        agents_text = (repo_root / "AGENTS.md").read_text(encoding="utf-8")
-        self.assertIn("@foo/bar.md", agents_text)
-        self.assertIn("@.agents/.instructions/INSTRUCTIONS_TESTING.md", agents_text)
-        self.assertEqual(agents_text.count("@.agents/.instructions/INSTRUCTIONS_TESTING.md"), 1)
-        self.assertIn("## Notes", agents_text)
+        self.assertNotIn("## Modules", agents_text)
 
     def test_perform_global_install_requires_trigger_module_include(self) -> None:
         source_dir = self.make_source_skill_dir()
