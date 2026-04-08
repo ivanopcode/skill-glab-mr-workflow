@@ -10,7 +10,7 @@ GitLab merge request workflow skill for Codex and Claude Code, built around the 
 
 ## What It Covers
 
-- macOS Keychain-backed `glab` auth for GitLab.com and self-hosted GitLab
+- `glab auth login --use-keyring` based auth bootstrap for GitLab.com and self-hosted GitLab
 - MR status reads with pipeline and failed job summaries
 - MR review context, unresolved discussions, and diff-oriented review flow
 - Manual pipeline job discovery and execution
@@ -24,7 +24,6 @@ GitLab merge request workflow skill for Codex and Claude Code, built around the 
 - `locales/metadata.json`: install-time localized metadata excluding trigger phrases
 - `.skill_triggers`: localized markdown trigger catalogs copied into runtime and treated as the single source of truth for skill triggers
 - `dependencies.json`: declared machine-level command dependencies required before install
-  and supported platforms for install-time validation
 - `Makefile`: public entrypoints for `make install` in the source repo and `make skill` in a committed runtime copy
 - `scripts/setup_main.py`, `scripts/setup_support.py`: source-install helper for repo-local copies, metadata rendering, and runtime packaging
 - `scripts/bootstrap.sh`: skill-local bootstrap entrypoint for committed runtime copies
@@ -45,17 +44,11 @@ make install REPO=/abs/path/to/repo LOCALE=ru-en
 
 This creates `<repo>/.agents/skills/skill-glab-mr-workflow`, strips nested git metadata, renders installed metadata in the selected locale, and prunes installer-only files from the committed runtime copy.
 
-Before copying anything into the target repository, `make install` validates the declared install contract from `dependencies.json`:
+Before copying anything into the target repository, `make install` validates the declared machine-level command dependencies from `dependencies.json` and requires them to be available in `PATH`.
 
-- supported platforms
-- machine-level command dependencies required in `PATH`
+If any required command is missing, install fails and the runtime copy is not updated.
 
-If the current platform is unsupported or any required command is missing, install fails and the runtime copy is not updated.
-
-Current support for this skill:
-
-- supported: macOS (`darwin`)
-- not supported as an install target: Windows, Linux
+`make install` is intentionally not the place where project bootstrap policy is enforced. It installs the committed runtime copy of this skill into a repository. Whether the target repository also needs a repo-level bootstrap step such as `make agents` is project-specific and stays the responsibility of that repository.
 
 Once the committed runtime copy already exists inside the repository, bootstrap only the skill-local runtime with:
 
@@ -64,6 +57,12 @@ make -C <repo>/.agents/skills/skill-glab-mr-workflow skill
 ```
 
 Repository-level wiring such as `.claude/skills/*`, `.agents/bin/*`, and shared `PATH` setup belongs to the project bootstrap layer, not to this skill.
+
+In other words:
+
+- `make install` copies and localizes the skill into one repository
+- `make -C <repo>/.agents/skills/skill-glab-mr-workflow skill` bootstraps only that installed skill runtime
+- any repository-wide bootstrap remains optional and project-defined
 
 ## Quick Start
 

@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import platform
 import re
 import shutil
 import subprocess
@@ -184,53 +183,6 @@ def load_declared_dependencies(skill_dir: Path) -> list[dict[str, str]]:
             }
         )
     return normalized
-
-
-def load_supported_platforms(skill_dir: Path) -> list[str]:
-    path = skill_dir / DEPENDENCIES_RELATIVE_PATH
-    if not path.exists():
-        return []
-
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        raise SetupError(f"Invalid dependency catalog: {path}") from exc
-
-    platforms = payload.get("supported_platforms")
-    if platforms is None:
-        return []
-    if not isinstance(platforms, list):
-        raise SetupError(f"Dependency catalog must contain 'supported_platforms' as an array: {path}")
-
-    normalized: list[str] = []
-    for index, value in enumerate(platforms):
-        if not isinstance(value, str) or not value.strip():
-            raise SetupError(f"Platform #{index + 1} must be a non-empty string in {path}")
-        normalized.append(value.strip().lower())
-    return normalized
-
-
-def ensure_supported_platform(skill_dir: Path, locale_mode: str) -> None:
-    supported_platforms = load_supported_platforms(skill_dir)
-    if not supported_platforms:
-        return
-
-    current_platform = platform.system().strip().lower()
-    if current_platform in supported_platforms:
-        return
-
-    locale = parse_locale_mode(locale_mode).primary_locale
-    supported_rendered = ", ".join(supported_platforms)
-    path = skill_dir / DEPENDENCIES_RELATIVE_PATH
-    if locale == "ru":
-        raise SetupError(
-            f"Скилл не поддерживает текущую платформу `{current_platform}`. "
-            f"Поддерживаемые платформы из {path}: {supported_rendered}"
-        )
-    raise SetupError(
-        f"Skill does not support the current platform `{current_platform}`. "
-        f"Supported platforms declared in {path}: {supported_rendered}"
-    )
 
 
 def ensure_declared_dependencies(skill_dir: Path, locale_mode: str) -> None:
@@ -552,7 +504,6 @@ def perform_install(
     runtime_dir = install_root / ".agents" / "skills" / skill_name
 
     locale_mode = resolve_locale_mode(install_mode, runtime_dir, requested_locale)
-    ensure_supported_platform(source_dir, locale_mode)
     ensure_declared_dependencies(source_dir, locale_mode)
 
     sync_skill_copy(source_dir, runtime_dir)

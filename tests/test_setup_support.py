@@ -35,10 +35,11 @@ class SetupSupportTest(unittest.TestCase):
         (skill_dir / "dependencies.json").write_text(
             json.dumps(
                 {
-                    "supported_platforms": ["darwin"],
                     "dependencies": [
-                        {"command": "glab", "install": "brew install glab"},
-                        {"command": "direnv", "install": "brew install direnv"},
+                        {
+                            "command": "glab",
+                            "install": "install glab and ensure it is available in PATH",
+                        },
                     ]
                 },
                 ensure_ascii=False,
@@ -213,8 +214,6 @@ class SetupSupportTest(unittest.TestCase):
         def fake_which(command: str) -> str | None:
             if command == "glab":
                 return None
-            if command == "direnv":
-                return "/opt/homebrew/bin/direnv"
             return None
 
         with mock.patch.object(ss, "resolve_repo_root", return_value=repo_root.resolve()), mock.patch.object(
@@ -232,34 +231,28 @@ class SetupSupportTest(unittest.TestCase):
 
         self.assertIn("dependencies.json", str(exc.exception))
         self.assertIn("glab", str(exc.exception))
-        self.assertIn("brew install glab", str(exc.exception))
+        self.assertIn("install glab and ensure it is available in PATH", str(exc.exception))
         self.assertFalse((repo_root / ".agents" / "skills" / "skill-glab-mr-workflow").exists())
 
-    def test_perform_local_install_fails_on_unsupported_platform(self) -> None:
+    def test_perform_local_install_does_not_gate_on_platform(self) -> None:
         source_dir = self.make_source_skill_dir()
         repo_root = self.root / "repo"
         repo_root.mkdir(parents=True, exist_ok=True)
 
         with mock.patch.object(ss, "resolve_repo_root", return_value=repo_root.resolve()), mock.patch.object(
-            ss.platform,
-            "system",
-            return_value="Linux",
-        ), mock.patch.object(
             ss.shutil,
             "which",
             return_value="/opt/homebrew/bin/present",
-        ):
-            with self.assertRaises(ss.SetupError) as exc:
-                ss.perform_install(
-                    source_dir=source_dir,
-                    install_mode="local",
-                    requested_locale="ru",
-                    repo_root=repo_root,
-                )
+        ), mock.patch("sys.platform", "win32"):
+            result = ss.perform_install(
+                source_dir=source_dir,
+                install_mode="local",
+                requested_locale="ru",
+                repo_root=repo_root,
+            )
 
-        self.assertIn("linux", str(exc.exception).lower())
-        self.assertIn("dependencies.json", str(exc.exception))
-        self.assertFalse((repo_root / ".agents" / "skills" / "skill-glab-mr-workflow").exists())
+        self.assertTrue((result.runtime_dir / "dependencies.json").exists())
+        self.assertTrue((result.runtime_dir / ss.MANIFEST_FILENAME).exists())
 
     def test_render_skill_metadata_uses_markdown_triggers_as_single_source(self) -> None:
         source_dir = self.make_source_skill_dir()

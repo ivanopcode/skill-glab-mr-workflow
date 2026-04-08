@@ -45,10 +45,14 @@ def main(argv: list[str] | None = None) -> None:
     print(f"Installed {result.skill_name}")
     print(f"  Source: {result.source_dir}")
     print(f"  Locale: {result.locale_mode}")
+    print(f"  Project: {result.install_root}")
     print(f"  Project copy: {result.runtime_dir}")
     print()
-    print("Next step:")
-    print(f"  make -C {result.runtime_dir} skill")
+    print("Next steps:")
+    print(f"  1. Bootstrap the installed skill runtime: make -C {result.runtime_dir} skill")
+    print("  2. If the target repository has its own agent bootstrap (for example `make agents`),")
+    print("     run it from that repository as a separate project-defined step.")
+    print("     This install command does not assume that such a repo-level bootstrap exists.")
 
 
 if __name__ == "__main__":

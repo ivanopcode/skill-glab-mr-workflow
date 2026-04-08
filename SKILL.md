@@ -408,7 +408,7 @@ make -C <repo>/.agents/skills/skill-glab-mr-workflow skill
 Install:
 
 ```bash
-brew install glab
+install glab and ensure it is available in PATH
 ```
 
 Bootstrap Keychain-backed auth:
