@@ -361,6 +361,75 @@ class CurrentUserResolutionTests(unittest.TestCase):
         )
 
 
+class AwaitPipelineTests(unittest.TestCase):
+    def _make_status(self, pipeline_status: str | None, failed_jobs: list | None = None) -> dict:
+        pipeline = {"id": 100, "status": pipeline_status, "web_url": "https://example.com"} if pipeline_status else None
+        return {
+            "target": {"hostname": "gitlab.example.com", "repo": "group/project", "iid": "42"},
+            "mr": {"iid": 42, "title": "Test"},
+            "head_pipeline": pipeline,
+            "recent_pipelines": [pipeline] if pipeline else [],
+            "failed_jobs": failed_jobs or [],
+            "manual_jobs": [],
+        }
+
+    def test_returns_immediately_on_terminal_status(self) -> None:
+        args = SimpleNamespace(target="42", repo="group/project", hostname="gitlab.example.com", interval=60, timeout=900, trace_lines=12)
+        with mock.patch.object(gmr_main, "resolve_mr_target", return_value={"hostname": "gitlab.example.com"}), \
+             mock.patch.object(gmr_main, "gather_status", return_value=self._make_status("success")), \
+             mock.patch.object(gmr_main.time, "sleep") as sleep_mock, \
+             mock.patch.object(gmr_main, "print_json") as print_mock:
+            gmr_main.command_mr_await_pipeline(args)
+
+        sleep_mock.assert_not_called()
+        payload = print_mock.call_args.args[0]
+        self.assertFalse(payload["timed_out"])
+        self.assertEqual(payload["attempts"], 1)
+        self.assertEqual(payload["elapsed_seconds"], 0)
+
+    def test_polls_until_terminal(self) -> None:
+        args = SimpleNamespace(target="42", repo="group/project", hostname="gitlab.example.com", interval=10, timeout=900, trace_lines=12)
+        statuses = [self._make_status("running"), self._make_status("failed", [{"id": 1, "name": "lint"}])]
+        with mock.patch.object(gmr_main, "resolve_mr_target", return_value={"hostname": "gitlab.example.com"}), \
+             mock.patch.object(gmr_main, "gather_status", side_effect=statuses), \
+             mock.patch.object(gmr_main.time, "sleep") as sleep_mock, \
+             mock.patch.object(gmr_main, "print_json") as print_mock:
+            gmr_main.command_mr_await_pipeline(args)
+
+        sleep_mock.assert_called_once_with(10)
+        payload = print_mock.call_args.args[0]
+        self.assertFalse(payload["timed_out"])
+        self.assertEqual(payload["attempts"], 2)
+        self.assertEqual(payload["elapsed_seconds"], 10)
+        self.assertEqual(payload["failed_jobs"], [{"id": 1, "name": "lint"}])
+
+    def test_times_out(self) -> None:
+        args = SimpleNamespace(target="42", repo="group/project", hostname="gitlab.example.com", interval=3, timeout=5, trace_lines=12)
+        with mock.patch.object(gmr_main, "resolve_mr_target", return_value={"hostname": "gitlab.example.com"}), \
+             mock.patch.object(gmr_main, "gather_status", return_value=self._make_status("running")), \
+             mock.patch.object(gmr_main.time, "sleep"), \
+             mock.patch.object(gmr_main, "print_json") as print_mock:
+            gmr_main.command_mr_await_pipeline(args)
+
+        payload = print_mock.call_args.args[0]
+        self.assertTrue(payload["timed_out"])
+        self.assertEqual(payload["attempts"], 3)
+        self.assertEqual(payload["elapsed_seconds"], 6)
+
+    def test_waits_for_pipeline_to_appear(self) -> None:
+        args = SimpleNamespace(target="42", repo="group/project", hostname="gitlab.example.com", interval=5, timeout=900, trace_lines=12)
+        statuses = [self._make_status(None), self._make_status("running"), self._make_status("success")]
+        with mock.patch.object(gmr_main, "resolve_mr_target", return_value={"hostname": "gitlab.example.com"}), \
+             mock.patch.object(gmr_main, "gather_status", side_effect=statuses), \
+             mock.patch.object(gmr_main.time, "sleep"), \
+             mock.patch.object(gmr_main, "print_json") as print_mock:
+            gmr_main.command_mr_await_pipeline(args)
+
+        payload = print_mock.call_args.args[0]
+        self.assertFalse(payload["timed_out"])
+        self.assertEqual(payload["attempts"], 3)
+
+
 class WriteWrapperTests(unittest.TestCase):
     def test_command_mr_create_requires_fill_or_title(self) -> None:
         args = SimpleNamespace(

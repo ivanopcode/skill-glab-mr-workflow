@@ -4,7 +4,7 @@ Use this file as the fastest command chooser for weak models. Prefer the left-to
 
 | Goal | Preferred command | Notes |
 | --- | --- | --- |
-| Verify auth for host | `<ensure-command> <hostname-or-url>` | Use only for a real host or host URL. |
+| Verify auth for host | `<gmr-command> auth ensure <hostname-or-url>` | Use only for a real host or host URL. |
 | Verify auth for MR target | `<gmr-command> auth ensure-mr <mr-target>` | Use for MR URL or IID. |
 | List opened MRs on project | `<gmr-command> mr list --repo <repo> --hostname <host>` | Default state is `opened`. |
 | List closed or merged MRs | `<gmr-command> mr list --repo <repo> --hostname <host> --state closed|merged|all` | Prefer `--state` over raw `glab` flags. |
@@ -13,6 +13,7 @@ Use this file as the fastest command chooser for weak models. Prefer the left-to
 | List MRs waiting for my review | `<gmr-command> mr list --repo <repo> --hostname <host> --mine --mine-role reviewer` | Use for prompts like "my review queue". |
 | List MRs by explicit user | `<gmr-command> mr list --repo <repo> --hostname <host> --author <user>` | Also supports `mine`, `me`, `@me`. |
 | Check MR status | `<gmr-command> mr status <mr-target>` | Default read path for MR-bound pipeline status. |
+| Wait for pipeline to finish | `<gmr-command> mr await-pipeline <mr-target> --interval 60 --timeout 900` | Polls until terminal state. Ask user for interval/timeout. |
 | List manual jobs on MR pipeline | `<gmr-command> mr manual-jobs <mr-target>` | Returns only `manual` jobs from head pipeline. |
 | Run a manual job | `<gmr-command> mr run-manual <job-id-or-name> --mr <mr-target>` | If name is ambiguous, stop and ask. |
 | Build review context | `<gmr-command> mr review-context <mr-target>` | Filters bot noise by default. |

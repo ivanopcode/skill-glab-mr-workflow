@@ -237,6 +237,22 @@ Rules:
 - If there is no head pipeline, say so explicitly instead of guessing.
 - If there are no manual jobs, say that directly.
 
+Use `<gmr-command>` to wait for a pipeline to reach terminal state instead of manual polling:
+
+```bash
+<gmr-command> mr await-pipeline <mr-target> --interval 60 --timeout 900
+<gmr-command> mr await-pipeline <iid> --repo <repo> --hostname <host> --interval 30 --timeout 600
+```
+
+Rules:
+
+- Before starting, ask the user for poll interval and timeout. Suggest defaults: 60s interval, 900s (15min) timeout.
+- Use `await-pipeline` instead of organizing a manual polling loop.
+- The command returns the same payload as `mr status` with three additional fields: `timed_out`, `attempts`, `elapsed_seconds`.
+- If `timed_out` is true, report to the user that the pipeline is still running and stop.
+- If the result has failed jobs, proceed with failure analysis as in the MR Status workflow.
+- `await-pipeline` handles the case where the pipeline has not started yet (e.g. right after a push).
+
 Use direct `glab` CI commands only when you need the raw pipeline view or non-MR pipeline operations:
 
 ```bash

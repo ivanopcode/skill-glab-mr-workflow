@@ -9,6 +9,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 import urllib.parse
 from pathlib import Path
 from typing import Any
@@ -45,6 +46,7 @@ BOT_BODY_MARKERS = (
     "danger-id-",
 )
 MINE_ALIASES = {"@me", "me", "mine", "@mine"}
+PIPELINE_TERMINAL_STATUSES = frozenset({"success", "failed", "canceled", "skipped"})
 
 
 class CommandError(RuntimeError):
@@ -1011,6 +1013,46 @@ def command_mr_status(args: argparse.Namespace) -> None:
     print_json(gather_status(ctx, trace_lines=args.trace_lines))
 
 
+def command_mr_await_pipeline(args: argparse.Namespace) -> None:
+    ctx = resolve_mr_target(args.target, args.repo, args.hostname)
+    interval = args.interval
+    timeout = args.timeout
+    max_attempts = max(timeout // interval, 1) if interval > 0 else 1
+    elapsed = 0
+    attempt = 0
+
+    while True:
+        attempt += 1
+        status_payload = gather_status(ctx, trace_lines=args.trace_lines)
+        pipeline = status_payload.get("head_pipeline")
+        pipeline_status = (pipeline or {}).get("status")
+
+        if pipeline_status in PIPELINE_TERMINAL_STATUSES:
+            status_payload["timed_out"] = False
+            status_payload["attempts"] = attempt
+            status_payload["elapsed_seconds"] = elapsed
+            print_json(status_payload)
+            return
+
+        if elapsed >= timeout:
+            status_payload["timed_out"] = True
+            status_payload["attempts"] = attempt
+            status_payload["elapsed_seconds"] = elapsed
+            print_json(status_payload)
+            return
+
+        remaining = timeout - elapsed
+        print(
+            f"Pipeline {pipeline_status or 'not started'}, "
+            f"attempt {attempt}/{max_attempts}, "
+            f"next check in {interval}s, "
+            f"{remaining}s remaining",
+            file=sys.stderr,
+        )
+        time.sleep(interval)
+        elapsed += interval
+
+
 def command_mr_manual_jobs(args: argparse.Namespace) -> None:
     ctx = resolve_mr_target(args.target, args.repo, args.hostname)
     status_payload = gather_status(ctx, trace_lines=8)
@@ -1087,7 +1129,7 @@ def command_mr_merge(args: argparse.Namespace) -> None:
     pipeline_status = head_pipeline.get("status")
     if pipeline_status == "failed":
         raise CommandError("Refusing to merge while the head pipeline is failed.")
-    if pipeline_status in {"running", "pending", "created", "preparing", "waiting_for_resource"} and not args.auto_merge:
+    if pipeline_status and pipeline_status not in PIPELINE_TERMINAL_STATUSES and not args.auto_merge:
         raise CommandError(
             "Head pipeline is not finished yet. Re-run with --auto-merge or wait for a green pipeline."
         )
@@ -1218,6 +1260,15 @@ def build_parser() -> argparse.ArgumentParser:
     status_parser.add_argument("--hostname")
     status_parser.add_argument("--trace-lines", type=int, default=12)
     status_parser.set_defaults(func=command_mr_status)
+
+    await_parser = mr_subparsers.add_parser("await-pipeline")
+    await_parser.add_argument("target")
+    await_parser.add_argument("--repo")
+    await_parser.add_argument("--hostname")
+    await_parser.add_argument("--interval", type=int, default=60, help="Poll interval in seconds.")
+    await_parser.add_argument("--timeout", type=int, default=900, help="Max wait time in seconds.")
+    await_parser.add_argument("--trace-lines", type=int, default=12)
+    await_parser.set_defaults(func=command_mr_await_pipeline)
 
     manual_jobs_parser = mr_subparsers.add_parser("manual-jobs")
     manual_jobs_parser.add_argument("target")
